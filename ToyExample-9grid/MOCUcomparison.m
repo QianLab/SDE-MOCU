@@ -1,0 +1,182 @@
+L1 = [1, 3];
+L2 = [-1, 1];
+B = [5, 10];
+sigma = [0.01, 0.1];
+
+
+G_IBR = 
+
+
+
+
+N = 400;
+rho_samples = 2*betarnd(rho_dispara, rho_dispara, 1, N)-1;
+theta_samples = rand(1, N)*theta_dispara-0.5*theta_dispara+1;% theta is uniform distribution or Gaussian distribution or...
+ocu_rho_array = zeros(N, 1);
+ocu_theta_array = zeros(N, 1);
+filename = sprintf('Thetaf%.1fRho%.1f.txt', theta_dispara, rho_dispara);
+fileID = fopen(filename, 'a');
+for n = 1:N
+    
+    n
+%     %calculate covariance factor related to theta
+%     ryx_theta = RyxTheta(r, c, theta_samples(n), blurringT);
+%     rxx_theta = RxxTheta(r, c, theta_samples(n), blurringT);
+%     theta_cell = cell(3, 1);
+%     theta_cell{1} = theta_samples(n);
+%     theta_cell{2} = ryx_theta;
+%     theta_cell{3} = rxx_theta;
+%     
+%     %IBR filter over rho
+%     IBR_filter_rho = IbrFilterRho(theta_cell, Rho, sigma_);
+    
+    %calculate OCU over rho
+    tic
+    [ocu_rho_array(n), ocu_theta_array(n)] = OcuRho(theta_samples(n), rho_samples(n),...
+        rho_dispara, theta_dispara,  r, c, blurringT, sigma_);
+    
+    fprintf(fileID, '%12f %12f\n', ocu_rho_array(n), ocu_theta_array(n));
+    
+    toc
+    
+end
+fclose(fileID);
+
+
+function [resk10, resk12, resk21] = IbrResidual(L1, L2, Lb, sigmaL)
+%the design value based on mocu
+    kMcNum = 200;
+    theta1only = 0;
+    cost_direct = 1;
+    
+    %initial
+    res_theta1_array = zeros(kMcNum, 1);
+    resk12_array = res_theta1_array;
+    resk21_array = res_theta1_array;
+    
+    thetaSampleSet = mvnrnd(mu, Omega, kMcNum);
+    fileID = fopen('residual-record.txt', 'a');
+    for kidx = 1:kMcNum
+        disp(kidx)
+        K10 = thetaSampleSet(kidx, 1);
+        K12 = thetaSampleSet(kidx, 2);
+        K21 = thetaSampleSet(kidx, 3);
+        
+        if cost_direct == 1
+            [res_theta1_array(kidx), resk12_array(kidx), resk21_array(kidx)] = IbrFilterCost(K10, K12, K21, mu, Omega, T, dt, rho, Y_initial, sigma1, sigma2, sigmae);
+        else
+        
+            [Xt, Yt] = PKSignalSampleGenerator(5000, K10, K12, K21, T, dt, rho, Y_initial, sigma1, sigma2, sigmae);
+            [IBR_G_k10, IBR_G_k12, IBR_G_k21] = IbrFilter(K10, K12, K21, mu, Omega, T, dt, rho, Y_initial, sigma1, sigma2, sigmae);
+
+            if theta1only == 0
+                res_theta1_array(kidx) = SquareError(IBR_G_k10, Xt, Yt);%if we have to calculate IBR filter with large computation, it should be better to sample more x and y
+                resk12_array(kidx) = SquareError(IBR_G_k12, Xt, Yt);
+                resk21_array(kidx) = SquareError(IBR_G_k21, Xt, Yt);
+            else
+                res_theta1_array(kidx) = SquareError(IBR_G_k10(1:1001, :), Xt, Yt(1:1001, :));%if we have to calculate IBR filter with large computation, it should be better to sample more x and y
+                resk12_array(kidx) = SquareError(IBR_G_k12(1:1001, :), Xt, Yt(1:1001, :));
+                resk21_array(kidx) = SquareError(IBR_G_k21(1:1001, :), Xt, Yt(1:1001, :));
+            end
+        end
+        
+        fprintf(fileID, '%d\t', kidx);
+        fprintf(fileID, '%12.12g\t', res_theta1_array(kidx));
+        fprintf(fileID, '%12.12g\t', resk12_array(kidx));
+        fprintf(fileID, '%12.12g\t', resk21_array(kidx));
+        fprintf(fileID, '\n');
+    end
+    fclose(fileID);
+    resk10 = mean(res_theta1_array);
+    resk12 = mean(resk12_array);
+    resk21 = mean(resk21_array);
+end
+
+
+
+function [emocu_rho, emocu_theta] = EMocuRho(theta_dispara, rho_dispara, r, c, blurringT, sigma_)
+%emocu_rho  = E_Theta{E_Rho[MSE_rho(filter_IBR_rho(theta))]} the first term of MOCU
+%emocu_theta = E_Rho{E_Theta[MSE_theta(filter_IBR_theta(rho))]} 
+%theta_dispara is parameter for the distribution of theta, the width of uniform
+%distribution
+%rho_dispara is parameter for the distribution of rho, 2*beta(Rho, Rho)-1
+
+
+%Monta Carlo
+N = 400;
+rho_samples = 2*betarnd(rho_dispara, rho_dispara, 1, N)-1;
+theta_samples = rand(1, N)*theta_dispara-0.5*theta_dispara+1;% theta is uniform distribution or Gaussian distribution or...
+ocu_rho_array = zeros(N, 1);
+ocu_theta_array = zeros(N, 1);
+filename = sprintf('Thetaf%.1fRho%.1f.txt', theta_dispara, rho_dispara);
+fileID = fopen(filename, 'a');
+for n = 1:N
+    
+    n
+%     %calculate covariance factor related to theta
+%     ryx_theta = RyxTheta(r, c, theta_samples(n), blurringT);
+%     rxx_theta = RxxTheta(r, c, theta_samples(n), blurringT);
+%     theta_cell = cell(3, 1);
+%     theta_cell{1} = theta_samples(n);
+%     theta_cell{2} = ryx_theta;
+%     theta_cell{3} = rxx_theta;
+%     
+%     %IBR filter over rho
+%     IBR_filter_rho = IbrFilterRho(theta_cell, Rho, sigma_);
+    
+    %calculate OCU over rho
+    tic
+    [ocu_rho_array(n), ocu_theta_array(n)] = OcuRho(theta_samples(n), rho_samples(n),...
+        rho_dispara, theta_dispara,  r, c, blurringT, sigma_);
+    
+    fprintf(fileID, '%12f %12f\n', ocu_rho_array(n), ocu_theta_array(n));
+    
+    toc
+    
+end
+fclose(fileID);
+% rhopdf = @(rho) betapdf(rho, rho_dispara, rho_dispara);
+% thetapdf = 1/theta_dispara;
+% fun = @(theta, rho) OcuRho(theta, rho, rho_dispara, theta_dispara, r, c, blurringT, sigma_).*rhopdf(y)*thetapdf;
+% emocu = integral2(fun, 1-theta_dispara/2, 1+theta_dispara/2,...
+%             -1, 1, 'AbsTol',1e-1);
+
+emocu_rho = mean(ocu_rho_array);
+emocu_theta = mean(ocu_theta_array);
+end
+
+function [ocu_rho, ocu_theta] = OcuRho(theta, rho, rho_dispara, theta_dispara, r, c, blurringT, sigma_)
+%ocu for a given theta and rho
+%ocu_rho  = MSE(filter_IBR_rho(theta)) only the first term of OCU
+%ocu_theta = MSE(filter_IBR_theta(rho)) 
+%rho_dispara, theta_dispara is the parameter for distribution of rho and
+%theta. 
+%rho is beta distribution over [-1, 1]: 2*betarnd(rho_dispara, rho_dispara)-1
+%theta is uniform distribution over [1-theta_para/2, 1+theta_para/2]: rand(1, N)*theta_dispara-0.5*theta_dispara+1;
+%blurringT is rec blurring filter length
+%sigma_ is noise parameter
+
+%calculate covariance factor related to theta
+ryx_theta = RyxTheta(r, c, theta, blurringT);
+rxx_theta = RxxTheta(r, c, theta, blurringT);
+
+%define a theta cell for computation speed up
+theta_cell = cell(3, 1);
+theta_cell{1} = theta;
+theta_cell{2} = ryx_theta;
+theta_cell{3} = rxx_theta;
+
+%IBR filter over rho
+IBR_filter_rho = IbrFilterRho(theta_cell, rho_dispara, sigma_);
+IBR_filter_theta = IbrFilterTheta(rho, theta_dispara, r, c, blurringT, sigma_);
+
+%convariance matrix
+ryy_trace = RyyTrace(r, rho, theta_cell);
+ryx = Ryx(theta_cell, rho);
+rxx = Rxx(theta_cell, rho, sigma_);
+
+%IBR filter over rho
+ocu_rho = MseOfFilter(ryy_trace, ryx, rxx, IBR_filter_rho);
+ocu_theta = MseOfFilter(ryy_trace, ryx, rxx, IBR_filter_theta);
+
+end
